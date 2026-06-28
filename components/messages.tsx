@@ -7,7 +7,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDownIcon, ChevronUpIcon, SpinnerIcon } from "./icons";
 import { UIMessage } from "ai";
-import { PRICE_PER_INFERENCE_TOKEN_WEI } from "@/lib/constants";
+import { getPricePerTokenWei, formatPriceUsdc, PRICING_DISPLAY_INFO } from "@/lib/pricing";
+import { modelID, models } from "@/lib/models";
 
 interface ReasoningPart {
   type: "reasoning";
@@ -48,33 +49,17 @@ export function ReasoningMessagePart({
 
   return (
     <div className="flex flex-col">
-      {isReasoning ? (
-        <div className="flex flex-row gap-2 items-center">
-          <div className="text-sm font-medium">Reasoning</div>
-          <div className="animate-spin">
-            <SpinnerIcon />
-          </div>
-        </div>
-      ) : (
-        <div className="flex flex-row gap-2 items-center">
-          <div className="text-sm font-medium">Reasoned for a few seconds</div>
-          <button
-            className={cn(
-              "rounded-full cursor-pointer dark:hover:bg-zinc-800 hover:bg-zinc-200",
-              {
-                "dark:bg-zinc-800 bg-zinc-200": isExpanded,
-              },
-            )}
-            onClick={() => {
-              setIsExpanded(!isExpanded);
-            }}
-          >
-            {isExpanded ? <ChevronDownIcon /> : <ChevronUpIcon />}
-          </button>
-        </div>
-      )}
+      <div className="dark:text-zinc-400 text-zinc-600">
+        <button
+          className="flex flex-row items-center gap-1"
+          onClick={() => setIsExpanded(!isExpanded)}
+        >
+          Thinking
+          {isExpanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
+        </button>
+      </div>
 
-      <AnimatePresence initial={false}>
+      <AnimatePresence>
         {isExpanded && (
           <motion.div
             key="reasoning"
@@ -88,8 +73,6 @@ export function ReasoningMessagePart({
             <Markdown components={markdownComponents}>
               {part.text}
             </Markdown>
-
-            {/* <Markdown components={markdownComponents}>{reasoning}</Markdown> */}
           </motion.div>
         )}
       </AnimatePresence>
@@ -112,30 +95,63 @@ export function TextMessagePart({ text }: TextMessagePartProps) {
 interface CostCardProps {
   totalTokens: number;
   allowanceLeft?: string;
+  modelId?: modelID;
+  pricePerTokenWei?: string;
 }
 
-export function CostCard({ totalTokens, allowanceLeft }: CostCardProps) {
-  const costInWei = PRICE_PER_INFERENCE_TOKEN_WEI * totalTokens;
-  const costInUsdc = costInWei / 10 ** 6; // USDC has 6 decimals
+export function CostCard({ totalTokens, allowanceLeft, modelId, pricePerTokenWei }: CostCardProps) {
+  // Get pricing info
+  const modelName = modelId ? models[modelId] : "Unknown Model";
+  const pricePerToken = pricePerTokenWei 
+    ? BigInt(pricePerTokenWei)
+    : BigInt(1); // Default fallback
+  
+  const costInWei = pricePerToken * BigInt(totalTokens);
+  const costInUsdc = formatPriceUsdc(costInWei);
 
-  const allowanceLeftUsdc = allowanceLeft
-    ? Number(BigInt(allowanceLeft)) / 10 ** 6
+  const allowanceLeftWei = allowanceLeft ? BigInt(allowanceLeft) : null;
+  const allowanceLeftUsdc = allowanceLeftWei 
+    ? formatPriceUsdc(allowanceLeftWei)
     : null;
 
+  // Get provider info for display
+  const providerInfo = modelId ? PRICING_DISPLAY_INFO[getProviderFromModelId(modelId)] : null;
+
   return (
-    <div className="flex flex-row items-center gap-2 text-xs dark:text-zinc-500 text-zinc-600 mt-2">
-      <div className="dark:bg-zinc-800 bg-zinc-200 rounded-lg px-3 py-1.5">
-        Inference Cost -{" "}
-        <span className="font-medium">${costInUsdc.toFixed(6)}</span>
-      </div>
-      {allowanceLeftUsdc !== null && (
+    <div className="flex flex-col gap-2 text-xs dark:text-zinc-500 text-zinc-600 mt-2">
+      <div className="flex flex-row items-center gap-2 flex-wrap">
         <div className="dark:bg-zinc-800 bg-zinc-200 rounded-lg px-3 py-1.5">
-          Allowance Left -{" "}
-          <span className="font-medium">${allowanceLeftUsdc.toFixed(6)}</span>
+          Inference Cost - <span className="font-medium">${costInUsdc}</span>
+          {providerInfo && (
+            <span className="ml-2 text-zinc-500">
+              ({providerInfo.basePrice}/token)
+            </span>
+          )}
         </div>
-      )}
+        
+        {modelId && (
+          <div className="dark:bg-zinc-800 bg-zinc-200 rounded-lg px-3 py-1.5">
+            Model: <span className="font-medium">{modelName}</span>
+          </div>
+        )}
+        
+        {allowanceLeftUsdc !== null && (
+          <div className="dark:bg-zinc-800 bg-zinc-200 rounded-lg px-3 py-1.5">
+            Allowance Left - <span className="font-medium">${allowanceLeftUsdc}</span>
+          </div>
+        )}
+      </div>
     </div>
   );
+}
+
+// Helper to extract provider from model ID (duplicated from pricing.ts for client-side)
+function getProviderFromModelId(modelId: string): string {
+  if (modelId.startsWith("gpt-") || modelId.startsWith("o1-")) return "openai";
+  if (modelId.startsWith("claude-") || modelId.startsWith("sonnet-") || modelId.startsWith("haiku-")) return "anthropic";
+  if (modelId.startsWith("groq-")) return "groq";
+  if (modelId.startsWith("deepinfra-")) return "deepinfra";
+  return "default";
 }
 
 interface MessagesProps {
@@ -160,9 +176,16 @@ export function Messages({ messages, status }: MessagesProps) {
     >
       {messages.map((message) => {
         // Extract token usage from message metadata if available
-        const metadata = message.metadata as { totalTokens: number; allowanceLeft?: string } | undefined;
+        const metadata = message.metadata as {
+          totalTokens: number;
+          allowanceLeft?: string;
+          modelId?: modelID;
+          pricePerTokenWei?: string;
+        } | undefined;
         const totalTokens = metadata?.totalTokens;
         const allowanceLeft = metadata?.allowanceLeft;
+        const modelId = metadata?.modelId;
+        const pricePerTokenWei = metadata?.pricePerTokenWei;
 
         return (
           <div
@@ -202,7 +225,12 @@ export function Messages({ messages, status }: MessagesProps) {
                 }
               })}
               {message.role === "assistant" && totalTokens && (
-                <CostCard totalTokens={totalTokens} allowanceLeft={allowanceLeft} />
+                <CostCard 
+                  totalTokens={totalTokens} 
+                  allowanceLeft={allowanceLeft}
+                  modelId={modelId}
+                  pricePerTokenWei={pricePerTokenWei}
+                />
               )}
             </div>
           </div>

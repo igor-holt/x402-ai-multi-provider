@@ -18,10 +18,10 @@ import {
   serverWalletAddress,
 } from "../../../lib/thirdweb.server";
 import {
-  MAX_INFERENCE_TOKENS_PER_CALL,
   paymentToken,
-  PRICE_PER_INFERENCE_TOKEN_WEI,
-} from "../../../lib/constants";
+  MAX_INFERENCE_TOKENS_PER_CALL,
+  getPricePerTokenWei,
+} from "../../../lib/pricing";
 
 const twFacilitator = facilitator({
   client: serverClient,
@@ -35,10 +35,15 @@ const asset = {
 export async function POST(request: NextRequest) {
   const paymentData = request.headers.get("x-payment");
 
-  const maxAmount =
-    PRICE_PER_INFERENCE_TOKEN_WEI * MAX_INFERENCE_TOKENS_PER_CALL;
-  const minAmount =
-    PRICE_PER_INFERENCE_TOKEN_WEI * (MAX_INFERENCE_TOKENS_PER_CALL / 10);
+  const { selectedModelId } = (await request.json()) as {
+    selectedModelId: modelID;
+  };
+
+  // Get price per token for the selected model
+  const pricePerTokenWei = getPricePerTokenWei(selectedModelId);
+  
+  const maxAmount = pricePerTokenWei * MAX_INFERENCE_TOKENS_PER_CALL;
+  const minAmount = pricePerTokenWei * BigInt(MAX_INFERENCE_TOKENS_PER_CALL / 10);
 
   const paymentArgs: PaymentArgs = {
     facilitator: twFacilitator,
@@ -57,8 +62,8 @@ export async function POST(request: NextRequest) {
   // verify the signed payment data with maximum payment amount before doing any work
   const result = await verifyPayment({
     ...paymentArgs,
-     // minimum required, if approval goes below this, a new signature will be requested
-     minPrice: {
+    // minimum required, if approval goes below this, a new signature will be requested
+    minPrice: {
       amount: minAmount.toString(),
       asset,
     },
@@ -74,13 +79,7 @@ export async function POST(request: NextRequest) {
   const allowanceLeft = BigInt(result.allowance || maxAmount);
 
   // then, process the chat request and do the inference
-  const {
-    messages,
-    selectedModelId,
-  }: {
-    messages: Array<UIMessage>;
-    selectedModelId: modelID;
-  } = await request.json();
+  const { messages }: { messages: Array<UIMessage> } = await request.json();
 
   const stream = streamText({
     system: "You are a helpful assistant.",
@@ -107,7 +106,8 @@ export async function POST(request: NextRequest) {
         return;
       }
 
-      const finalPrice = PRICE_PER_INFERENCE_TOKEN_WEI * totalTokens;
+      // Calculate price based on the selected model
+      const finalPrice = getPricePerTokenWei(selectedModelId) * BigInt(totalTokens);
 
       // finally, settle the payment asynchronously after the stream is completed
       try {
@@ -130,6 +130,7 @@ export async function POST(request: NextRequest) {
     sendReasoning: true,
     messageMetadata: ({ part }) => {
       if (part.type === "finish") {
+        const totalTokens = part.totalUsage.totalTokens;
         return {
           totalTokens: part.totalUsage.totalTokens,
           allowanceLeft: part.totalUsage.totalTokens
@@ -137,10 +138,12 @@ export async function POST(request: NextRequest) {
                 const remaining =
                   allowanceLeft -
                   BigInt(part.totalUsage.totalTokens) *
-                    BigInt(PRICE_PER_INFERENCE_TOKEN_WEI);
+                    getPricePerTokenWei(selectedModelId);
                 return (remaining < BigInt(0) ? BigInt(0) : remaining).toString();
               })()
             : allowanceLeft.toString(),
+          modelId: selectedModelId,
+          pricePerTokenWei: getPricePerTokenWei(selectedModelId).toString(),
         };
       }
       return undefined;
