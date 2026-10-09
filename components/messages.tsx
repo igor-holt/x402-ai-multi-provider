@@ -5,9 +5,9 @@ import Markdown from "react-markdown";
 import { markdownComponents } from "./markdown-components";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDownIcon, ChevronUpIcon, SpinnerIcon } from "./icons";
+import { ChevronDownIcon, ChevronUpIcon } from "./icons";
 import { UIMessage } from "ai";
-import { getPricePerTokenWei, formatPriceUsdc, PRICING_DISPLAY_INFO } from "@/lib/pricing";
+import { formatPriceUsdc, PRICING_DISPLAY_INFO } from "@/lib/pricing";
 import { modelID, models } from "@/lib/models";
 
 interface ReasoningPart {
@@ -115,7 +115,8 @@ export function CostCard({ totalTokens, allowanceLeft, modelId, pricePerTokenWei
     : null;
 
   // Get provider info for display
-  const providerInfo = modelId ? PRICING_DISPLAY_INFO[getProviderFromModelId(modelId)] : null;
+  const providerKey = modelId ? getProviderFromModelId(modelId) : null;
+  const providerInfo = providerKey ? PRICING_DISPLAY_INFO[providerKey] : null;
 
   return (
     <div className="flex flex-col gap-2 text-xs dark:text-zinc-500 text-zinc-600 mt-2">
@@ -146,12 +147,12 @@ export function CostCard({ totalTokens, allowanceLeft, modelId, pricePerTokenWei
 }
 
 // Helper to extract provider from model ID (duplicated from pricing.ts for client-side)
-function getProviderFromModelId(modelId: string): string {
+function getProviderFromModelId(modelId: string): keyof typeof PRICING_DISPLAY_INFO | null {
   if (modelId.startsWith("gpt-") || modelId.startsWith("o1-")) return "openai";
   if (modelId.startsWith("claude-") || modelId.startsWith("sonnet-") || modelId.startsWith("haiku-")) return "anthropic";
   if (modelId.startsWith("groq-")) return "groq";
   if (modelId.startsWith("deepinfra-")) return "deepinfra";
-  return "default";
+  return null;
 }
 
 interface MessagesProps {

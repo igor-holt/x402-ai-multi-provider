@@ -21,10 +21,10 @@ export const PRICING_PER_TOKEN_WEI: Record<string, bigint> = {
   anthropic: BigInt(2), // $0.000002 per token (Claude is more expensive)
   
   // Groq pricing (very fast, lower cost)
-  groq: BigInt(0.5), // $0.0000005 per token
+  groq: BigInt(1), // sub-wei is not representable
   
   // DeepInfra pricing
-  deepinfra: BigInt(0.8), // $0.0000008 per token
+  deepinfra: BigInt(1), // sub-wei is not representable
 };
 
 // Model-specific pricing overrides (optional)
@@ -34,7 +34,7 @@ export const MODEL_PRICING_OVERRIDES: Partial<Record<modelID, bigint>> = {
   "gpt-5.1": BigInt(2), // $0.000002 per token
   "gpt-5": BigInt(2),
   "claude-3-opus": BigInt(3), // $0.000003 per token
-  "claude-3-7-sonnet-20250219": BigInt(2.5),
+  "sonnet-3.7": BigInt(3), // upstream id is not a modelID; 2.5 wei is not an integer
   "groq-llama-3.1-405b": BigInt(1), // Premium Groq model
   // Add more overrides as needed
 };

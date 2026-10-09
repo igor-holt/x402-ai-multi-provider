@@ -1,19 +1,5 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/next",
-      "config": {
-        "installCommand": "npm install"
-      }
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/"
-    }
-  ],
+  "framework": "nextjs",
+  "installCommand": "pnpm install --frozen-lockfile",
   "regions": ["iad1"]
 }
