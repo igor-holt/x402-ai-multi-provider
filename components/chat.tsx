@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useChat } from "@ai-sdk/react";
 import { useState } from "react";
 import { Messages } from "./messages";
-import { modelID, models, defaultModelId } from "@/lib/models";
+import { modelID, defaultModelId } from "@/lib/models";
 import { Footnote } from "./footnote";
 import { ArrowUpIcon, StopIcon } from "./icons";
 import { Input } from "./input";

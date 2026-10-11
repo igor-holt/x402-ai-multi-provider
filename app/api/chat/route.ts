@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
   // Get price per token for the selected model
   const pricePerTokenWei = getPricePerTokenWei(selectedModelId);
   
-  const maxAmount = pricePerTokenWei * MAX_INFERENCE_TOKENS_PER_CALL;
+  const maxAmount = pricePerTokenWei * BigInt(MAX_INFERENCE_TOKENS_PER_CALL);
   const minAmount = pricePerTokenWei * BigInt(MAX_INFERENCE_TOKENS_PER_CALL / 10);
 
   const paymentArgs: PaymentArgs = {
@@ -130,7 +130,6 @@ export async function POST(request: NextRequest) {
     sendReasoning: true,
     messageMetadata: ({ part }) => {
       if (part.type === "finish") {
-        const totalTokens = part.totalUsage.totalTokens;
         return {
           totalTokens: part.totalUsage.totalTokens,
           allowanceLeft: part.totalUsage.totalTokens
